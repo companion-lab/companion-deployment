@@ -1,0 +1,167 @@
+_format_version: "2.1"
+_transform: true
+
+###
+### Auth / GoTrue
+###
+services:
+  - name: auth-v1-open
+    url: http://supabase-auth:9999/verify
+    routes:
+      - name: auth-v1-open
+        strip_path: true
+        paths:
+          - /auth/v1/verify
+    plugins:
+      - name: cors
+  - name: auth-v1-open-callback
+    url: http://supabase-auth:9999/callback
+    routes:
+      - name: auth-v1-open-callback
+        strip_path: true
+        paths:
+          - /auth/v1/callback
+    plugins:
+      - name: cors
+  - name: auth-v1-open-authorize
+    url: http://supabase-auth:9999/authorize
+    routes:
+      - name: auth-v1-open-authorize
+        strip_path: true
+        paths:
+          - /auth/v1/authorize
+    plugins:
+      - name: cors
+  - name: auth-v1-open-well-known
+    url: http://supabase-auth:9999/.well-known/openid-configuration
+    routes:
+      - name: auth-v1-open-well-known
+        strip_path: true
+        paths:
+          - /auth/v1/.well-known/openid-configuration
+    plugins:
+      - name: cors
+  - name: auth-v1
+    url: http://supabase-auth:9999/
+    routes:
+      - name: auth-v1-all
+        strip_path: true
+        paths:
+          - /auth/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+  - name: auth-v1-custom-otp
+    url: http://supabase-auth:9999/custom-otp
+    routes:
+      - name: auth-v1-custom-otp
+        strip_path: true
+        paths:
+          - /auth/v1/custom-otp
+    plugins:
+      - name: cors
+
+###
+### REST API / PostgREST
+###
+  - name: rest-v1
+    url: http://supabase-rest:3000/
+    routes:
+      - name: rest-v1-all
+        strip_path: true
+        paths:
+          - /rest/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+  - name: rest-v1-admin
+    url: http://supabase-rest:3000/
+    routes:
+      - name: rest-v1-admin-all
+        strip_path: true
+        paths:
+          - /rest-admin/v1/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+
+###
+### Realtime
+###
+  - name: realtime-v1-ws
+    url: http://supabase-realtime:4000/socket/
+    routes:
+      - name: realtime-v1-ws
+        strip_path: true
+        paths:
+          - /realtime/v1/
+    plugins:
+      - name: cors
+  - name: realtime-v1-rest
+    url: http://supabase-realtime:4000/api/
+    routes:
+      - name: realtime-v1-rest
+        strip_path: true
+        paths:
+          - /realtime/v1/api/
+    plugins:
+      - name: cors
+
+###
+### Storage API
+###
+  - name: storage-v1
+    url: http://supabase-storage:5000/
+    routes:
+      - name: storage-v1-all
+        strip_path: true
+        paths:
+          - /storage/v1/
+    plugins:
+      - name: cors
+
+###
+### Edge Functions
+###
+  - name: functions-v1
+    url: http://supabase-edge-functions:9000/
+    routes:
+      - name: functions-v1-all
+        strip_path: true
+        paths:
+          - /functions/v1/
+    plugins:
+      - name: cors
+
+###
+### Postgres Meta
+###
+  - name: meta
+    url: http://supabase-meta:8080/
+    routes:
+      - name: meta-all
+        strip_path: true
+        paths:
+          - /pg/
+    plugins:
+      - name: cors
+      - name: key-auth
+        config:
+          hide_credentials: false
+
+###
+### Consumers (API Keys)
+###
+consumers:
+  - username: anon
+    keyauth_credentials:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.aPf296UNkQWlaQYbNB2tWvI52F3TpkSbW2eogQi5IS8
+  - username: service_role
+    keyauth_credentials:
+      - key: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.qvjPSb4CWL2-04VdqWFvIIs-APvQ0tx0ZqLCLxym6cQ

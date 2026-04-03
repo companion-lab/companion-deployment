@@ -1,0 +1,607 @@
+name: companion-platform
+
+services:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # SUPABASE STACK
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  supabase-db:
+    image: supabase/postgres:15.14.1.104
+    container_name: companion-supabase-db
+    ports:
+      - "${SUPABASE_DB_PORT:-5432}:5432"
+    volumes:
+      - supabase-db-data:/var/lib/postgresql/data
+      - ./supabase/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      POSTGRES_USER: ${SUPABASE_DB_USER:-supabase_admin}
+      POSTGRES_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      POSTGRES_DB: ${SUPABASE_DB_NAME:-postgres}
+    healthcheck:
+      test:
+        ["CMD-SHELL", "pg_isready -U ${SUPABASE_DB_USER:-supabase_admin} -d ${SUPABASE_DB_NAME:-postgres}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    networks:
+      - companion-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+
+  supabase-studio:
+    image: supabase/studio:latest
+    container_name: companion-supabase-studio
+    ports:
+      - "${SUPABASE_STUDIO_PORT:-3000}:3000"
+    environment:
+      HOSTNAME: "::"
+      STUDIO_PG_META_URL: http://supabase-meta:8080
+      POSTGRES_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      DEFAULT_PROJECT_ID: ${SUPABASE_PROJECT_ID:-companion-platform}
+      SUPABASE_URL: http://supabase-kong:8000
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:3000}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
+      LOG_LEVEL: info
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-kong:
+    image: kong:2.8.1
+    container_name: companion-supabase-kong
+    ports:
+      - "${SUPABASE_API_PORT:-8000}:8000"
+      - "${SUPABASE_API_TLS_PORT:-8443}:8443"
+    volumes:
+      - ./supabase/kong/kong.yml:/var/lib/kong/kong.yml:ro
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /var/lib/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth
+      KONG_LOG_LEVEL: info
+    depends_on:
+      supabase-auth:
+        condition: service_healthy
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-auth:
+    image: supabase/gotrue:v2.189.0-rc.4
+    container_name: companion-supabase-auth
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9999/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://${SUPABASE_DB_USER:-supabase_admin}:${SUPABASE_DB_PASSWORD}@supabase-db:5432/${SUPABASE_DB_NAME:-postgres}
+      GOTRUE_SITE_URL: ${SUPABASE_SITE_URL:-http://localhost:3000}
+      GOTRUE_URI_ALLOW_LIST: "*"
+      GOTRUE_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      GOTRUE_JWT_EXP: ${SUPABASE_JWT_EXP:-3600}
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL:-http://localhost:8000}
+      GOTRUE_DISABLE_SIGNUP: ${SUPABASE_DISABLE_SIGNUP:-false}
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-rest:
+    image: postgrest/postgrest:latest
+    container_name: companion-supabase-rest
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://${SUPABASE_DB_USER:-supabase_admin}:${SUPABASE_DB_PASSWORD}@supabase-db:5432/${SUPABASE_DB_NAME:-postgres}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public,hivemind,vexa}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-realtime:
+    image: supabase/realtime:v2.33.42
+    container_name: companion-supabase-realtime
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PORT: 4000
+      DB_HOST: supabase-db
+      DB_PORT: 5432
+      DB_NAME: ${SUPABASE_DB_NAME:-postgres}
+      DB_USER: ${SUPABASE_DB_USER:-supabase_admin}
+      DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
+      DB_AFTER_CONNECT_QUERY: "SET search_path TO _realtime"
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      SECRET_KEY_BASE: ${SUPABASE_SECRET_KEY_BASE:-companion-platform-realtime-secret-key-base-change-me-0123456789abcdef}
+      RLIMIT_NOFILE: 10000
+      METRICS_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      FLY_ALLOC_ID: fly123
+      FLY_APP_NAME: realtime
+      APP_NAME: realtime
+      SEED_SELF_HOST: "true"
+      RUN_JANITOR: "true"
+      DISABLE_HEALTHCHECK_LOGGING: "true"
+      ERL_AFLAGS: -proto_dist inet_tcp
+      DNS_NODES: "''"
+      ENABLE_TAILSCALE: "false"
+      REALTIME_IPC_REPLICATION_URL: postgres://${SUPABASE_DB_USER:-supabase_admin}:${SUPABASE_DB_PASSWORD}@supabase-db:5432/${SUPABASE_DB_NAME:-postgres}
+    command: >
+      sh -c "/app/bin/migrate && /app/bin/realtime eval 'Realtime.Release.seeds(Realtime.Repo)' && /app/bin/server"
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-meta:
+    image: supabase/postgres-meta:v0.96.2
+    container_name: companion-supabase-meta
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: supabase-db
+      PG_META_DB_PORT: 5432
+      PG_META_DB_NAME: ${SUPABASE_DB_NAME:-postgres}
+      PG_META_DB_USER: ${SUPABASE_DB_USER:-supabase_admin}
+      PG_META_DB_PASSWORD: ${SUPABASE_DB_PASSWORD}
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-storage:
+    image: supabase/storage-api:latest
+    container_name: companion-supabase-storage
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+      supabase-rest:
+        condition: service_started
+    environment:
+      ANON_KEY: ${SUPABASE_ANON_KEY}
+      SERVICE_KEY: ${SUPABASE_SERVICE_KEY}
+      POSTGREST_URL: http://supabase-rest:3000
+      PGRST_JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      DATABASE_URL: postgres://${SUPABASE_DB_USER:-supabase_admin}:${SUPABASE_DB_PASSWORD}@supabase-db:5432/${SUPABASE_DB_NAME:-postgres}
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      ENABLE_IMAGE_TRANSFORMATION: "true"
+      IMGPROXY_URL: http://supabase-imgproxy:5001
+    volumes:
+      - supabase-storage-data:/var/lib/storage
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-imgproxy:
+    image: darthsim/imgproxy:v3.8.0
+    container_name: companion-supabase-imgproxy
+    environment:
+      IMGPROXY_BIND: ":5001"
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_ENABLE_WEBP_DETECTION: ${IMGPROXY_ENABLE_WEBP_DETECTION:-true}
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  supabase-edge-functions:
+    image: supabase/edge-runtime:v1.65.3
+    container_name: companion-supabase-edge-functions
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    environment:
+      JWT_SECRET: ${SUPABASE_JWT_SECRET}
+      SUPABASE_URL: http://supabase-kong:8000
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_KEY}
+      SUPABASE_DB_URL: postgres://${SUPABASE_DB_USER:-supabase_admin}:${SUPABASE_DB_PASSWORD}@supabase-db:5432/${SUPABASE_DB_NAME:-postgres}
+      VERIFY_JWT: "false"
+    command: start --main-service /home/deno/functions/main
+    volumes:
+      - ./supabase/functions:/home/deno/functions
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # COMPANION-VOICE (VEXA) STACK
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  vexa-api-gateway:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: companion-vexa-api-gateway
+    ports:
+      - "${VEXA_API_PORT:-8056}:8000"
+    environment:
+      - ADMIN_API_URL=http://vexa-admin-api:8001
+      - BOT_MANAGER_URL=http://vexa-bot-manager:8080
+      - TRANSCRIPTION_COLLECTOR_URL=http://vexa-transcription-collector:8000
+      - MCP_URL=http://vexa-mcp:18888
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - PUBLIC_BASE_URL=${VEXA_PUBLIC_URL:-http://localhost:8056}
+      - TRANSCRIPT_SHARE_TTL_SECONDS=900
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DB_HOST=supabase-db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=${SUPABASE_DB_USER:-supabase_admin}
+      - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_SCHEMA=vexa
+      - DB_SSL_MODE=disable
+    init: true
+    depends_on:
+      vexa-admin-api:
+        condition: service_started
+      vexa-bot-manager:
+        condition: service_started
+      vexa-transcription-collector:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-admin-api:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}
+      dockerfile: services/admin-api/Dockerfile
+    container_name: companion-vexa-admin-api
+    ports:
+      - "${VEXA_ADMIN_PORT:-8057}:8001"
+    environment:
+      - DB_HOST=supabase-db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=${SUPABASE_DB_USER:-supabase_admin}
+      - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_SCHEMA=vexa
+      - DB_SSL_MODE=disable
+      - ADMIN_API_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-bot-manager:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}
+      dockerfile: services/bot-manager/Dockerfile
+    container_name: companion-vexa-bot-manager
+    environment:
+      - REDIS_URL=redis://vexa-redis:6379/0
+      - BOT_IMAGE_NAME=${VEXA_BOT_IMAGE:-vexa-bot:dev}
+      - TTS_SERVICE_URL=http://vexa-tts-service:8002
+      - DOCKER_NETWORK=${COMPOSE_PROJECT_NAME:-companion-platform}_companion-network
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - DB_HOST=supabase-db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=${SUPABASE_DB_USER:-supabase_admin}
+      - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_SCHEMA=vexa
+      - DB_SSL_MODE=disable
+      - DOCKER_HOST=unix://var/run/docker.sock
+      - DEVICE_TYPE=remote
+      - WHISPER_LIVE_URL=ws://vexa-whisperlive:9090/ws
+      - ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - ZOOM_CLIENT_ID=${ZOOM_CLIENT_ID:-}
+      - ZOOM_CLIENT_SECRET=${ZOOM_CLIENT_SECRET:-}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-minio}
+      - MINIO_ENDPOINT=vexa-minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-vexa-recordings}
+      - MINIO_SECURE=false
+      - RECORDING_ENABLED=${RECORDING_ENABLED:-false}
+      - CAPTURE_MODES=audio
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - vexa-recordings-data:/data/recordings
+    init: true
+    depends_on:
+      vexa-redis:
+        condition: service_started
+      vexa-tts-service:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-whisperlive:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}
+      dockerfile: services/WhisperLive/Dockerfile.cpu
+    container_name: companion-vexa-whisperlive
+    volumes:
+      - vexa-wl-recordings:/var/lib/wl-recordings
+    environment:
+      - REDIS_STREAM_URL=redis://vexa-redis:6379/0/transcription_segments
+      - TRANSCRIPTION_COLLECTOR_URL=redis://vexa-redis:6379/0/transcription_segments
+      - REDIS_HOST=vexa-redis
+      - REDIS_PORT=6379
+      - REDIS_DB=0
+      - REDIS_STREAM_NAME=transcription_segments
+      - LANGUAGE_DETECTION_SEGMENTS=10
+      - VAD_FILTER_THRESHOLD=0.5
+      - MIN_AUDIO_S=2.0
+      - MIN_AUDIO_S_TIER2=20.0
+      - MIN_TIME_BETWEEN_REQUESTS_S=0.5
+      - MIN_TIME_BETWEEN_REQUESTS_S_TIER2=20.0
+      - WL_RECORDING_DIR=/var/lib/wl-recordings
+      - WL_RECORDING_FLUSH_SECONDS=3
+      - WL_RECORDING_FSYNC_SECONDS=10
+      - WL_RECORDING_ROTATE_SECONDS=20
+      - WL_RECORDING_ROTATE_BYTES=16777216
+      - WL_RECORDING_SNAPSHOT_SECONDS=20
+      - WL_RECORDING_UPLOAD_URL=http://vexa-bot-manager:8080/internal/recordings/upload
+      - SAME_OUTPUT_THRESHOLD=3
+      - SAME_OUTPUT_THRESHOLD_TIER2=2
+      - DEVICE_TYPE=remote
+      - REMOTE_TRANSCRIBER_URL=http://vexa-transcription-service:80/v1/audio/transcriptions
+      - REMOTE_TRANSCRIBER_API_KEY=${VEXA_TRANSCRIBER_API_KEY}
+      - CONSUL_ENABLE=false
+      - WL_REDIS_DISCOVERY_ENABLED=false
+    command: >-
+      --port 9090
+      --backend remote
+      --min_audio_s 2.0
+      --min_audio_s_tier2 20.0
+      --min_time_between_requests_s 0.5
+      --min_time_between_requests_s_tier2 20.0
+      --wl_recording_dir /var/lib/wl-recordings
+      --wl_recording_flush_seconds 3
+      --wl_recording_fsync_seconds 10
+      --wl_recording_rotate_seconds 20
+      --wl_recording_rotate_bytes 16777216
+      --wl_recording_snapshot_seconds 20
+      --same_output_threshold 3
+      --same_output_threshold_tier2 2
+    expose:
+      - "9090"
+      - "9091"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    init: true
+    depends_on:
+      vexa-transcription-collector:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-transcription-collector:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}
+      dockerfile: services/transcription-collector/Dockerfile
+    container_name: companion-vexa-transcription-collector
+    ports:
+      - "${VEXA_TRANSCRIPTION_COLLECTOR_PORT:-8123}:8000"
+    environment:
+      - DB_HOST=supabase-db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=${SUPABASE_DB_USER:-supabase_admin}
+      - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_SCHEMA=vexa
+      - DB_SSL_MODE=disable
+      - REDIS_HOST=vexa-redis
+      - REDIS_PORT=6379
+      - REDIS_STREAM_NAME=transcription_segments
+      - REDIS_CONSUMER_GROUP=collector_group
+      - REDIS_STREAM_READ_COUNT=10
+      - REDIS_STREAM_BLOCK_MS=2000
+      - ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - BACKGROUND_TASK_INTERVAL=10
+      - IMMUTABILITY_THRESHOLD=30
+      - REDIS_SEGMENT_TTL=3600
+      - REDIS_CLEANUP_THRESHOLD=86400
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-minio}
+      - MINIO_ENDPOINT=vexa-minio:9000
+      - MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
+      - MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
+      - MINIO_BUCKET=${MINIO_BUCKET:-vexa-recordings}
+      - MINIO_SECURE=false
+    init: true
+    depends_on:
+      vexa-redis:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-transcription-service:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}/services/transcription-service
+      dockerfile: Dockerfile.cpu
+    container_name: companion-vexa-transcription-service
+    expose:
+      - "80"
+    environment:
+      - WHISPER_MODEL=large-v3-turbo
+      - COMPUTE_TYPE=int8
+      - DEVICE=cpu
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-mcp:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}
+      dockerfile: services/mcp/Dockerfile
+    container_name: companion-vexa-mcp
+    ports:
+      - "${VEXA_MCP_PORT:-18888}:18888"
+    environment:
+      - API_GATEWAY_URL=http://vexa-api-gateway:8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    depends_on:
+      vexa-api-gateway:
+        condition: service_started
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-tts-service:
+    build:
+      context: ${COMPAVION_VOICE_PATH:-../companion-voice}
+      dockerfile: services/tts-service/Dockerfile
+    container_name: companion-vexa-tts-service
+    expose:
+      - "8002"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com}
+      - TTS_API_TOKEN=${TTS_API_TOKEN:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    init: true
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-redis:
+    image: redis:7.0-alpine
+    container_name: companion-vexa-redis
+    command:
+      ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    volumes:
+      - vexa-redis-data:/data
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-minio:
+    image: minio/minio:latest
+    container_name: companion-vexa-minio
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    volumes:
+      - vexa-minio-data:/data
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    networks:
+      - companion-network
+    restart: unless-stopped
+
+  vexa-minio-init:
+    image: minio/mc:latest
+    container_name: companion-vexa-minio-init
+    depends_on:
+      - vexa-minio
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        sleep 5
+        mc alias set vexa http://vexa-minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD}
+        mc mb --ignore-existing vexa/$${MINIO_BUCKET:-vexa-recordings}
+        mc anonymous set download vexa/$${MINIO_BUCKET:-vexa-recordings} || true
+        exit 0
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY}
+    networks:
+      - companion-network
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # COMPANION-HIVEMIND (Rust backend)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  companion-hivemind:
+    build:
+      context: ${HIVEMIND_PATH:-../companion-hivemind}
+    container_name: companion-hivemind
+    ports:
+      - "${HIVEMIND_PORT:-9100}:9100"
+    environment:
+      - DB_HOST=supabase-db
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=${SUPABASE_DB_USER:-supabase_admin}
+      - DB_PASSWORD=${SUPABASE_DB_PASSWORD}
+      - DB_MAX_CONNECTIONS=10
+      - DB_SCHEMA=hivemind
+      - JWT_SECRET=${HIVEMIND_JWT_SECRET}
+      - JWT_TTL_SECONDS=2592000
+      - ENCRYPTION_SECRET=${HIVEMIND_ENCRYPTION_SECRET}
+      - VEXA_API_URL=http://vexa-api-gateway:8000
+      - VEXA_ADMIN_API_URL=http://vexa-admin-api:8001
+      - VEXA_ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
+      - HOST=0.0.0.0
+      - PORT=9100
+    depends_on:
+      supabase-db:
+        condition: service_healthy
+    networks:
+      - companion-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9100/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # VOLUMES & NETWORKS
+  # ─────────────────────────────────────────────────────────────────────────────
+
+volumes:
+  supabase-db-data:
+    name: companion-supabase-db-data
+  supabase-storage-data:
+    name: companion-supabase-storage-data
+  vexa-redis-data:
+    name: companion-vexa-redis-data
+  vexa-minio-data:
+    name: companion-vexa-minio-data
+  vexa-recordings-data:
+    name: companion-vexa-recordings-data
+  vexa-wl-recordings:
+    name: companion-vexa-wl-recordings
+
+networks:
+  companion-network:
+    name: companion-network
+    driver: bridge
