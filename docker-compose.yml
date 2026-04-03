@@ -308,7 +308,7 @@ services:
       - REDIS_URL=redis://vexa-redis:6379/0
       - BOT_IMAGE_NAME=${VEXA_BOT_IMAGE:-vexa-bot:dev}
       - TTS_SERVICE_URL=http://vexa-tts-service:8002
-      - DOCKER_NETWORK=${COMPOSE_PROJECT_NAME:-companion-platform}_companion-network
+      - DOCKER_NETWORK=companion-network
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - DB_HOST=supabase-db
       - DB_PORT=5432
