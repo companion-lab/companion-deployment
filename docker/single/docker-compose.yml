@@ -21,7 +21,7 @@ services:
       - "9003:9001"    # Minio Console (remapped from 9001)
       - "9100:9100"    # Hivemind API
       - "18888:18888"  # Vexa MCP
-      - "11434:11434"  # Ollama (embeddings)
+      # Ollama runs inside container only, not exposed to host
     volumes:
       - companion-data:/var/lib/postgresql/data
       - companion-qdrant:/var/lib/qdrant/storage
