@@ -1,0 +1,81 @@
+# Single-container Companion deployment
+# Usage: docker compose up -d --build
+# One container, everything inside (like Frigate)
+
+services:
+  companion:
+    build:
+      context: ../../..
+      dockerfile: companion-deployment/docker/single/Dockerfile
+    container_name: companion
+    ports:
+      - "3000:3000"    # Supabase Studio
+      - "5432:5432"    # PostgreSQL
+      - "6333:6333"    # Qdrant HTTP
+      - "6334:6334"    # Qdrant gRPC
+      - "8000:8000"    # Kong/Supabase API
+      - "8056:8056"    # Vexa API Gateway
+      - "8057:8057"    # Vexa Admin API
+      - "8124:8124"    # Vexa Transcription Collector
+      - "9000:9000"    # Minio API
+      - "9003:9001"    # Minio Console (remapped from 9001)
+      - "9100:9100"    # Hivemind API
+      - "18888:18888"  # Vexa MCP
+      - "11434:11434"  # Ollama (embeddings)
+    volumes:
+      - companion-data:/var/lib/postgresql/data
+      - companion-qdrant:/var/lib/qdrant/storage
+      - companion-redis:/var/lib/redis
+      - companion-minio:/var/lib/minio/data
+      - companion-ollama:/root/.ollama
+      - companion-logs:/var/log/companion
+      - companion-vexa-logs:/var/log/vexa
+    environment:
+      - DB_HOST=localhost
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=supabase_admin
+      - DB_PASSWORD=postgres
+      - DB_SCHEMA=hivemind
+      - JWT_SECRET=${HIVEMIND_JWT_SECRET:-952572608172ccb759c0107b1ea873c1c7b3e0561753effc1b9a0be15a22c512}
+      - JWT_TTL_SECONDS=2592000
+      - ENCRYPTION_SECRET=${HIVEMIND_ENCRYPTION_SECRET:-7fc09e1cee970e2ab7fa4880a525998277712c393de94aa42cc725d3bad8081b}
+      - VEXA_API_URL=http://localhost:8056
+      - VEXA_ADMIN_API_URL=http://localhost:8057
+      - VEXA_ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN:-token}
+      - EMBEDDING_API_URL=http://localhost:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - QDRANT_URL=http://localhost:6334
+      - QDRANT_API_KEY=qdrant-dev-key
+      - MINIO_ACCESS_KEY=vexa-access-key
+      - MINIO_SECRET_KEY=vexa-secret-key
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9100/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+
+volumes:
+  companion-data:
+    name: companion-data
+  companion-qdrant:
+    name: companion-qdrant
+  companion-redis:
+    name: companion-redis
+  companion-minio:
+    name: companion-minio
+  companion-logs:
+    name: companion-logs
+  companion-vexa-logs:
+    name: companion-vexa-logs
+  companion-ollama:
+    name: companion-ollama
