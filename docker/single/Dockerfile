@@ -5,8 +5,29 @@ FROM rust:1.88-slim AS hivemind-builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libssl-dev libfontconfig1-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY companion-hivemind/. .
-RUN cargo build --release
+
+# Step 1: Copy only Cargo files to cache dependency downloads
+COPY companion-hivemind/Cargo.toml companion-hivemind/Cargo.lock ./
+
+# Create dummy src to satisfy cargo build for dependency caching
+RUN mkdir src && echo "fn main() {}" > src/main.rs
+
+# Download and compile all dependencies (cached layer)
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --release
+
+# Step 2: Copy actual source code (invalidates only when src changes)
+RUN rm -rf src
+COPY companion-hivemind/src ./src
+COPY companion-hivemind/migrations ./migrations
+
+# Build the actual project (only recompiles changed code)
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build --release
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Stage 2: Final unified companion image
@@ -38,9 +59,11 @@ RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.12.4/qdrant
 RUN curl -fsSL https://dl.min.io/server/minio/release/linux-amd64/minio \
     -o /usr/local/bin/minio && \
     chmod +x /usr/local/bin/minio
+
 # ── Install nginx (API gateway replacement for Kong) ─────────────────────────
 RUN apt-get update && apt-get install -y nginx && \
     rm -rf /var/lib/apt/lists/*
+
 # ── Install Python deps for Vexa services ────────────────────────────────────
 RUN python3 -m venv /opt/companion/venv
 ENV PATH="/opt/companion/venv/bin:$PATH"
@@ -118,7 +141,7 @@ ENV ENCRYPTION_SECRET=7fc09e1cee970e2ab7fa4880a525998277712c393de94aa42cc725d3ba
 ENV VEXA_API_URL=http://localhost:8056
 ENV VEXA_ADMIN_API_URL=http://localhost:8057
 ENV VEXA_ADMIN_TOKEN=token
-ENV EMBEDDING_API_URL=http://host.docker.internal:11434
+ENV EMBEDDING_API_URL=http://localhost:11434
 ENV EMBEDDING_MODEL=nomic-embed-text
 ENV QDRANT_URL=http://localhost:6334
 ENV QDRANT_API_KEY=qdrant-dev-key
