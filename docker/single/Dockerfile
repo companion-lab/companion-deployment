@@ -46,7 +46,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Install Ollama ───────────────────────────────────────────────────────────
-RUN curl -fsSL https://ollama.com/install.sh | sh
+RUN curl -fsSL https://github.com/ollama/ollama/releases/download/v0.5.7/ollama-linux-amd64 \
+    -o /usr/local/bin/ollama && \
+    chmod +x /usr/local/bin/ollama
 
 # ── Install Qdrant ───────────────────────────────────────────────────────────
 RUN curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.12.4/qdrant-x86_64-unknown-linux-gnu.tar.gz \
