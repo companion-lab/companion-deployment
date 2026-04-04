@@ -99,7 +99,7 @@ COPY --from=hivemind-builder /app/target/release/companion-hivemind /usr/local/b
 # ── Copy Vexa services ───────────────────────────────────────────────────────
 COPY companion-voice/services /opt/companion/services
 
-# ── Copy shared-models (for Alembic migrations) ─────────────────────────────
+# ── Copy shared-models (for Alembic migrations, includes alembic.ini) ────────
 COPY companion-voice/libs/shared-models /opt/companion/libs/shared-models
 
 # ── Copy Supabase configs ────────────────────────────────────────────────────
