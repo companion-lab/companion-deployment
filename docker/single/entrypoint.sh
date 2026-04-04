@@ -100,9 +100,27 @@ QEOF
 echo "[init] Qdrant config created."
 
 # ── Pull Ollama embedding model ──────────────────────────────────────────────
+# Start Ollama temporarily to pull the model, then stop it for supervisord
+echo "[init] Starting Ollama temporarily to pull embedding model..."
+OLLAMA_HOST=0.0.0.0:11434 /usr/local/bin/ollama serve &
+OLLAMA_PID=$!
+
+# Wait for Ollama to be ready
+for i in $(seq 1 30); do
+    if curl -s http://localhost:11434/ > /dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
+
 echo "[init] Pulling Ollama embedding model (${EMBEDDING_MODEL:-nomic-embed-text})..."
 ollama pull "${EMBEDDING_MODEL:-nomic-embed-text}" 2>&1 || echo "[warn] Failed to pull embedding model"
 echo "[init] Ollama model ready."
+
+# Stop temporary Ollama (supervisord will start it)
+kill $OLLAMA_PID 2>/dev/null || true
+wait $OLLAMA_PID 2>/dev/null || true
+sleep 1
 
 # ── Initialize Redis config ──────────────────────────────────────────────────
 cat > /opt/companion/config/redis.conf << 'REOF'
