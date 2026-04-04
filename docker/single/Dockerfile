@@ -15,7 +15,6 @@ RUN mkdir src && echo "fn main() {}" > src/main.rs
 # Download and compile all dependencies (cached layer)
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/app/target \
     cargo build --release
 
 # Step 2: Copy actual source code (invalidates only when src changes)
@@ -26,7 +25,6 @@ COPY companion-hivemind/migrations ./migrations
 # Build the actual project (only recompiles changed code)
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/app/target \
     cargo build --release
 
 # ─────────────────────────────────────────────────────────────────────────────
