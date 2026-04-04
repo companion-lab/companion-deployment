@@ -86,6 +86,43 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA vexa TO anon, authe
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA vexa TO anon, authenticated, service_role;
 SQLEOF
 
+# ── Run Vexa Alembic migrations ──────────────────────────────────────────────
+if [ -d /opt/companion/libs/shared-models/alembic ]; then
+    echo "[init] Running Vexa Alembic migrations..."
+    export DB_HOST=/var/run/postgresql
+    export DB_PORT=5432
+    export DB_NAME=postgres
+    export DB_USER=postgres
+    export DB_PASSWORD=""
+    export DB_SCHEMA=vexa
+    export DB_SSL_MODE=""
+    
+    /opt/companion/venv/bin/alembic -c /opt/companion/libs/shared-models/alembic.ini upgrade head 2>&1 || echo "[warn] Vexa migration failed"
+    
+    # Insert default admin API token if not exists
+    psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
+INSERT INTO vexa.api_tokens (token, user_id)
+SELECT 'token', u.id FROM vexa.users u
+WHERE u.email = 'admin@companion.local'
+AND NOT EXISTS (SELECT 1 FROM vexa.api_tokens WHERE token = 'token')
+LIMIT 1;
+SQLEOF
+    
+    # Create default admin user if not exists
+    psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
+INSERT INTO vexa.users (email, name, max_concurrent_bots)
+SELECT 'admin@companion.local', 'Admin', 5
+WHERE NOT EXISTS (SELECT 1 FROM vexa.users WHERE email = 'admin@companion.local');
+
+INSERT INTO vexa.api_tokens (token, user_id)
+SELECT 'token', u.id FROM vexa.users u
+WHERE u.email = 'admin@companion.local'
+AND NOT EXISTS (SELECT 1 FROM vexa.api_tokens WHERE token = 'token');
+SQLEOF
+    
+    echo "[init] Vexa migrations complete."
+fi
+
 echo "[init] PostgreSQL initialization complete."
 
 # ── Initialize Qdrant config ─────────────────────────────────────────────────

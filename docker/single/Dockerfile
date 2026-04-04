@@ -76,7 +76,7 @@ ENV PATH="/opt/companion/venv/bin:$PATH"
 
 # Install shared-models library first (dependency of Vexa services)
 COPY companion-voice/libs/shared-models /tmp/shared-models
-RUN pip install --no-cache-dir /tmp/shared-models
+RUN pip install --no-cache-dir /tmp/shared-models alembic asyncpg
 
 # Install all Vexa service requirements
 COPY companion-voice/services/api-gateway/requirements.txt /tmp/req-api-gateway.txt
@@ -98,6 +98,9 @@ COPY --from=hivemind-builder /app/target/release/companion-hivemind /usr/local/b
 
 # ── Copy Vexa services ───────────────────────────────────────────────────────
 COPY companion-voice/services /opt/companion/services
+
+# ── Copy shared-models (for Alembic migrations) ─────────────────────────────
+COPY companion-voice/libs/shared-models /opt/companion/libs/shared-models
 
 # ── Copy Supabase configs ────────────────────────────────────────────────────
 COPY companion-deployment/supabase /opt/companion/supabase
