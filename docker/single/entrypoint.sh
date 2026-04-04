@@ -97,7 +97,9 @@ if [ -d /opt/companion/libs/shared-models/alembic ]; then
     export DB_SCHEMA=vexa
     export DB_SSL_MODE=""
     
-    /opt/companion/venv/bin/alembic -c /opt/companion/libs/shared-models/alembic.ini upgrade head 2>&1 || echo "[warn] Vexa migration failed"
+    cd /opt/companion/libs/shared-models
+    /opt/companion/venv/bin/alembic upgrade head 2>&1 || echo "[warn] Vexa migration failed"
+    cd /
     
     # Insert default admin API token if not exists
     psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
