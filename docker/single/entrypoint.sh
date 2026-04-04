@@ -111,8 +111,8 @@ os.environ['DB_SSL_MODE'] = ''
 sys.path.insert(0, '/opt/companion/libs/shared-models')
 from shared_models.models import Base
 from sqlalchemy import create_engine
-engine = create_engine('postgresql:///postgres?host=/var/run/postgresql',
-    connect_args={'options': '-csearch_path=vexa'})
+engine = create_engine('postgresql+psycopg2://postgres@/postgres',
+    connect_args={'host': '/var/run/postgresql', 'options': '-csearch_path=vexa'})
 Base.metadata.create_all(bind=engine)
 print('All Vexa tables created.')
 engine.dispose()
