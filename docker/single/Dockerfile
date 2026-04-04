@@ -18,9 +18,12 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --release
 
 # Step 2: Copy actual source code (invalidates only when src changes)
-RUN rm -rf src
+RUN rm -rf src migrations
 COPY companion-hivemind/src ./src
 COPY companion-hivemind/migrations ./migrations
+
+# Force cargo to recompile by touching source files
+RUN find src -name '*.rs' -exec touch {} +
 
 # Build the actual project (only recompiles changed code)
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
