@@ -17,7 +17,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # ── Install system dependencies ──────────────────────────────────────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates curl wget gnupg supervisor \
+    ca-certificates curl wget gnupg supervisor zstd \
     postgresql-15 \
     redis-server \
     python3 python3-pip python3-venv \
