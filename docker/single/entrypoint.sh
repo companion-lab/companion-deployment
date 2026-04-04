@@ -97,25 +97,42 @@ if [ -d /opt/companion/libs/shared-models/alembic ]; then
     export DB_SCHEMA=vexa
     export DB_SSL_MODE=""
     
-    cd /opt/companion/libs/shared-models
-    /opt/companion/venv/bin/alembic upgrade head 2>&1 || echo "[warn] Vexa migration failed"
-    cd /
+    # First, create all tables from SQLAlchemy models (migrations are incremental)
+    # Use a standalone engine to avoid shared_models.database env validation
+    /opt/companion/venv/bin/python -c "
+import sys, os
+os.environ['DB_HOST'] = '/var/run/postgresql'
+os.environ['DB_PORT'] = '5432'
+os.environ['DB_NAME'] = 'postgres'
+os.environ['DB_USER'] = 'postgres'
+os.environ['DB_PASSWORD'] = ''
+os.environ['DB_SCHEMA'] = 'vexa'
+os.environ['DB_SSL_MODE'] = ''
+sys.path.insert(0, '/opt/companion/libs/shared-models')
+from shared_models.models import Base
+from sqlalchemy import create_engine
+engine = create_engine('postgresql:///postgres?host=/var/run/postgresql',
+    connect_args={'options': '-csearch_path=vexa'})
+Base.metadata.create_all(bind=engine)
+print('All Vexa tables created.')
+engine.dispose()
+" 2>&1 || echo "[warn] Vexa table creation failed"
     
-    # Insert default admin API token if not exists
-    psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
-INSERT INTO vexa.api_tokens (token, user_id)
-SELECT 'token', u.id FROM vexa.users u
-WHERE u.email = 'admin@companion.local'
-AND NOT EXISTS (SELECT 1 FROM vexa.api_tokens WHERE token = 'token')
-LIMIT 1;
-SQLEOF
+    # Stamp alembic to latest so future migrations work
+    cd /opt/companion/libs/shared-models
+    DB_HOST=/var/run/postgresql DB_PORT=5432 DB_NAME=postgres DB_USER=postgres DB_PASSWORD="" DB_SCHEMA=vexa DB_SSL_MODE="" \
+    /opt/companion/venv/bin/alembic stamp head 2>&1 || echo "[warn] Alembic stamp failed"
+    cd /
     
     # Create default admin user if not exists
     psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
 INSERT INTO vexa.users (email, name, max_concurrent_bots)
 SELECT 'admin@companion.local', 'Admin', 5
 WHERE NOT EXISTS (SELECT 1 FROM vexa.users WHERE email = 'admin@companion.local');
+SQLEOF
 
+    # Insert default admin API token if not exists
+    psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
 INSERT INTO vexa.api_tokens (token, user_id)
 SELECT 'token', u.id FROM vexa.users u
 WHERE u.email = 'admin@companion.local'
