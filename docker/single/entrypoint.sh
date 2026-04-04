@@ -115,6 +115,27 @@ done
 
 echo "[init] Pulling Ollama embedding model (${EMBEDDING_MODEL:-nomic-embed-text})..."
 ollama pull "${EMBEDDING_MODEL:-nomic-embed-text}" 2>&1 || echo "[warn] Failed to pull embedding model"
+
+# Detect actual embedding dimension from the model
+EMBED_DIM=$(curl -s http://localhost:11434/api/embeddings -H "Content-Type: application/json" \
+  -d "{\"model\":\"${EMBEDDING_MODEL:-nomic-embed-text}\",\"prompt\":\"test\"}" | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('embedding',[])))" 2>/dev/null || echo "768")
+echo "[init] Embedding dimension: $EMBED_DIM"
+
+# Fix Qdrant collection if it has wrong dimensions
+QDRANT_DIM=$(curl -s http://localhost:6333/collections/knowledge -H "api-key: qdrant-dev-key" | \
+  python3 -c "import sys,json; d=json.load(sys.stdin); print(d['result']['config']['params']['vectors']['size'])" 2>/dev/null || echo "0")
+
+if [ "$QDRANT_DIM" != "0" ] && [ "$QDRANT_DIM" != "$EMBED_DIM" ]; then
+    echo "[init] Qdrant collection has wrong dimension ($QDRANT_DIM), recreating with $EMBED_DIM..."
+    curl -s -X DELETE http://localhost:6333/collections/knowledge -H "api-key: qdrant-dev-key" > /dev/null
+    curl -s -X PUT http://localhost:6333/collections/knowledge \
+      -H "Content-Type: application/json" \
+      -H "api-key: qdrant-dev-key" \
+      -d "{\"vectors\":{\"size\":$EMBED_DIM,\"distance\":\"Cosine\"},\"on_disk_payload\":true}" > /dev/null
+    echo "[init] Qdrant collection recreated with $EMBED_DIM dimensions"
+fi
+
 echo "[init] Ollama model ready."
 
 # Stop temporary Ollama (supervisord will start it)
