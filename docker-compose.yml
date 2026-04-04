@@ -545,6 +545,27 @@ services:
       - companion-network
 
   # ─────────────────────────────────────────────────────────────────────────────
+  # OLLAMA (Embeddings for Hivemind RAG)
+  # ─────────────────────────────────────────────────────────────────────────────
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: companion-ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - companion-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+
+  # ─────────────────────────────────────────────────────────────────────────────
   # COMPANION-HIVEMIND (Rust backend)
   # ─────────────────────────────────────────────────────────────────────────────
 
@@ -570,9 +591,15 @@ services:
       - VEXA_ADMIN_TOKEN=${VEXA_ADMIN_API_TOKEN}
       - HOST=0.0.0.0
       - PORT=9100
+      - EMBEDDING_API_URL=http://ollama:11434
+      - EMBEDDING_MODEL=nomic-embed-text
+      - QDRANT_URL=http://qdrant:6334
+      - QDRANT_API_KEY=qdrant-dev-key
     depends_on:
       supabase-db:
         condition: service_healthy
+      ollama:
+        condition: service_started
     networks:
       - companion-network
     restart: unless-stopped
@@ -581,7 +608,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 3
-      start_period: 5s
+      start_period: 30s
 
   # ─────────────────────────────────────────────────────────────────────────────
   # VOLUMES & NETWORKS
@@ -600,6 +627,8 @@ volumes:
     name: companion-vexa-recordings-data
   vexa-wl-recordings:
     name: companion-vexa-wl-recordings
+  ollama-data:
+    name: companion-ollama-data
 
 networks:
   companion-network:
