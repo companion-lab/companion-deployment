@@ -127,6 +127,10 @@ RUN mkdir -p \
 RUN pg_createcluster 15 main --start 2>/dev/null || true && \
     pg_ctlcluster 15 main stop 2>/dev/null || true
 
+# ── Redis config (bind 0.0.0.0 for bot container access) ─────────────────────
+RUN mkdir -p /etc/redis
+COPY companion-deployment/docker/single/redis.conf /etc/redis/redis.conf
+
 # ── Supervisor config ────────────────────────────────────────────────────────
 COPY companion-deployment/docker/single/supervisord.conf /etc/supervisor/conf.d/companion.conf
 

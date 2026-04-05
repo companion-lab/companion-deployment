@@ -13,6 +13,7 @@ services:
       - "5432:5432"    # PostgreSQL
       - "6333:6333"    # Qdrant HTTP
       - "6334:6334"    # Qdrant gRPC
+      - "6379:6379"    # Redis (for bot containers with host networking)
       - "8000:8000"    # Kong/Supabase API
       - "8056:8056"    # Vexa API Gateway
       - "8057:8057"    # Vexa Admin API
