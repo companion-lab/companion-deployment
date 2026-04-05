@@ -65,6 +65,15 @@ services:
         limits:
           memory: 8G
 
+  # ── Vexa Bot Image ──────────────────────────────────────────────────────────
+  # Built alongside companion; bot-manager spawns instances via Docker socket
+  vexa-bot:
+    build:
+      context: ../../../companion-voice/services/vexa-bot
+      dockerfile: Dockerfile
+    image: vexa-bot:dev
+    profiles: ["bot"]
+
 volumes:
   companion-data:
     name: companion-data
