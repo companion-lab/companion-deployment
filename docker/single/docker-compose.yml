@@ -20,6 +20,7 @@ services:
       - "8124:8124"    # Vexa Transcription Collector
       - "9000:9000"    # Minio API
       - "9003:9001"    # Minio Console (remapped from 9001)
+      - "8080:8080"    # Bot Manager callback (for bot containers with host networking)
       - "9100:9100"    # Hivemind API
       - "18888:18888"  # Vexa MCP
       # Ollama runs inside container only, not exposed to host
