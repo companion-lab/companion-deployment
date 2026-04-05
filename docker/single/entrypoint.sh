@@ -124,7 +124,16 @@ engine.dispose()
     /opt/companion/venv/bin/alembic stamp head 2>&1 || echo "[warn] Alembic stamp failed"
     cd /
     
-    # Create default admin user if not exists
+    # Sync hivemind users to vexa.users (if hivemind tables exist)
+    psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
+INSERT INTO vexa.users (id, email, name, max_concurrent_bots)
+SELECT id, email, name, 5
+FROM hivemind.users h
+WHERE NOT EXISTS (SELECT 1 FROM vexa.users v WHERE v.email = h.email);
+SQLEOF
+    echo "[init] Hivemind users synced to Vexa."
+
+    # Create default admin user and token if not exists
     psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
 INSERT INTO vexa.users (email, name, max_concurrent_bots)
 SELECT 'admin@companion.local', 'Admin', 5
