@@ -125,9 +125,10 @@ engine.dispose()
     cd /
     
     # Sync hivemind users to vexa.users (if hivemind tables exist)
+    # Note: vexa.users uses integer auto-increment IDs, hivemind uses UUIDs
     psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
-INSERT INTO vexa.users (id, email, name, max_concurrent_bots)
-SELECT id, email, name, 5
+INSERT INTO vexa.users (email, name, max_concurrent_bots)
+SELECT email, name, 5
 FROM hivemind.users h
 WHERE NOT EXISTS (SELECT 1 FROM vexa.users v WHERE v.email = h.email);
 SQLEOF
