@@ -137,15 +137,15 @@ SQLEOF
     # Create default admin user and token if not exists
     psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
 INSERT INTO vexa.users (email, name, max_concurrent_bots)
-SELECT 'admin@companion.local', 'Admin', 5
-WHERE NOT EXISTS (SELECT 1 FROM vexa.users WHERE email = 'admin@companion.local');
+SELECT 'admin@companion.app', 'Admin', 5
+WHERE NOT EXISTS (SELECT 1 FROM vexa.users WHERE email = 'admin@companion.app');
 SQLEOF
 
     # Insert default admin API token if not exists
     psql -h /var/run/postgresql -U postgres -d postgres << 'SQLEOF'
 INSERT INTO vexa.api_tokens (token, user_id)
 SELECT 'token', u.id FROM vexa.users u
-WHERE u.email = 'admin@companion.local'
+WHERE u.email = 'admin@companion.app'
 AND NOT EXISTS (SELECT 1 FROM vexa.api_tokens WHERE token = 'token');
 SQLEOF
     
