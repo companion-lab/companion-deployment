@@ -76,6 +76,7 @@ if [ ! -f $W/venv/bin/uvicorn ]; then
     fi
   done
 fi
+mkdir -p /opt/companion
 ln -sf $W/venv /opt/companion/venv
 
 echo "=== 8. Generate secrets (persist in $W/config/.secrets) ==="
@@ -92,33 +93,29 @@ fi
 source $SECRETS_FILE
 
 echo "=== 9. Configure PostgreSQL ==="
-# Fix pg_hba for trust auth
-cat > /etc/postgresql/16/main/pg_hba.conf << 'PGEOF'
+# Ensure cluster exists (ephemeral on pod restart)
+if ! pg_lsclusters | grep -q '16.*main.*online'; then
+  if ! pg_lsclusters | grep -q '16.*main'; then
+    pg_createcluster 16 main
+  fi
+  # Trust auth for easy setup
+  cat > /etc/postgresql/16/main/pg_hba.conf << 'PGEOF'
 local   all   all                 trust
 host    all   all   127.0.0.1/32  trust
 host    all   all   ::1/128       trust
 host    all   all   0.0.0.0/0     md5
 PGEOF
-
-# Point data dir to persistent volume
-PGDATA=$W/data/postgresql
-if [ ! -d "$PGDATA" ]; then
-  # Init a new cluster on persistent storage
-  pg_dropcluster 16 main 2>/dev/null || true
-  pg_createcluster 16 main -- -D $PGDATA --auth-local=trust --auth-host=md5
-fi
-
-# Ensure config points to our data dir
-cat > /etc/postgresql/16/main/conf.d/companion.conf << PGEOF
-data_directory = '$PGDATA'
+  cat > /etc/postgresql/16/main/conf.d/companion.conf << 'PGEOF'
 listen_addresses = '*'
 port = 5432
 max_connections = 100
 shared_buffers = 256MB
 PGEOF
-
-pg_ctlcluster 16 main start 2>/dev/null || true
-sleep 2
+  pg_ctlcluster 16 main start
+  sleep 2
+else
+  echo "PostgreSQL already running"
+fi
 
 for i in $(seq 1 15); do
   pg_isready -h 127.0.0.1 -U supabase_admin 2>/dev/null && break
