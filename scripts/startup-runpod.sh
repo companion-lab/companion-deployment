@@ -265,7 +265,7 @@ startsecs=3
 [program:vexa-bot-manager]
 command=$W/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
 directory=$W/repo/companion-voice/services/bot-manager
-environment=REDIS_URL="redis://127.0.0.1:6379/0",TTS_SERVICE_URL="http://127.0.0.1:8002",DB_HOST="127.0.0.1",DB_PORT="5432",DB_NAME="postgres",DB_USER="supabase_admin",DB_PASSWORD="postgres",DB_SCHEMA="vexa",DB_SSL_MODE="disable",ADMIN_TOKEN="token",DEVICE_TYPE="remote",WHISPER_LIVE_URL="ws://127.0.0.1:9090/ws",STORAGE_BACKEND="minio",MINIO_ENDPOINT="127.0.0.1:9000",MINIO_ACCESS_KEY="vexa-access-key",MINIO_SECRET_KEY="vexa-secret-key",MINIO_BUCKET="vexa-recordings",DOCKER_HOST="unix:///var/run/docker.sock",DOCKER_NETWORK="host",BOT_CALLBACK_URL="http://127.0.0.1:8080/bots/internal/callback/exited",BOT_RECORDING_UPLOAD_URL="http://127.0.0.1:8080/internal/recordings/upload"
+environment=REDIS_URL="redis://127.0.0.1:6379/0",TTS_SERVICE_URL="http://127.0.0.1:8002",DB_HOST="127.0.0.1",DB_PORT="5432",DB_NAME="postgres",DB_USER="supabase_admin",DB_PASSWORD="postgres",DB_SCHEMA="vexa",DB_SSL_MODE="disable",ADMIN_TOKEN="token",ORCHESTRATOR="process",BOT_SCRIPT_PATH="$W/repo/companion-voice/services/vexa-bot/core/dist/docker.js",BOT_WORKING_DIR="$W/repo/companion-voice/services/vexa-bot/core",WHISPER_LIVE_URL="ws://127.0.0.1:9090/ws",STORAGE_BACKEND="minio",MINIO_ENDPOINT="127.0.0.1:9000",MINIO_ACCESS_KEY="vexa-access-key",MINIO_SECRET_KEY="vexa-secret-key",MINIO_BUCKET="vexa-recordings",BOT_CALLBACK_BASE_URL="http://127.0.0.1:8080",BOT_CALLBACK_URL="http://127.0.0.1:8080/bots/internal/callback/exited",BOT_RECORDING_UPLOAD_URL="http://127.0.0.1:8080/internal/recordings/upload",PROCESS_LOGS_DIR="$W/logs/vexa-bots"
 autostart=true
 autorestart=true
 stdout_logfile=$W/logs/vexa/bot-manager.log
