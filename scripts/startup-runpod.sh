@@ -3,7 +3,7 @@ set -e
 export DEBIAN_FRONTEND=noninteractive
 
 W=/workspace/companion
-mkdir -p $W/{data/postgresql,data/qdrant/storage,data/redis,data/minio,logs/companion,logs/vexa,config,venv,repo}
+mkdir -p $W/{data/postgresql,data/qdrant/storage,data/redis,data/minio,data/wl-recordings,logs/companion,logs/vexa,logs/whisperlive,config,venv,repo}
 
 echo "=== 1. Install system deps (if needed) ==="
 if ! command -v pg_isready &>/dev/null; then
@@ -101,6 +101,11 @@ if [ ! -f $W/venv/bin/uvicorn ]; then
       $W/venv/bin/pip install -r $W/repo/companion-voice/services/$svc/requirements.txt 2>&1 | tail -1 || true
     fi
   done
+fi
+
+# WhisperLive runtime deps (needed for live transcription on port 9090)
+if ! $W/venv/bin/python -c "import faster_whisper" >/dev/null 2>&1; then
+  $W/venv/bin/pip install -r $W/repo/companion-voice/services/WhisperLive/requirements/server.txt 2>&1 | tail -3
 fi
 mkdir -p /opt/companion
 ln -sf $W/venv /opt/companion/venv
@@ -259,6 +264,16 @@ stdout_logfile=$W/logs/companion/minio.log
 stderr_logfile=$W/logs/companion/minio.err.log
 startsecs=2
 
+[program:vexa-whisperlive]
+command=$W/venv/bin/python run_server.py --port 9090 --backend faster_whisper --omp_num_threads 4
+directory=$W/repo/companion-voice/services/WhisperLive
+environment=REDIS_STREAM_URL="redis://127.0.0.1:6379/0/transcription_segments",TRANSCRIPTION_COLLECTOR_URL="http://127.0.0.1:8124",REDIS_HOST="127.0.0.1",REDIS_PORT="6379",REDIS_DB="0",REDIS_STREAM_NAME="transcription_segments",WL_RECORDING_DIR="$W/data/wl-recordings",WL_RECORDING_UPLOAD_URL="http://127.0.0.1:8080/internal/recordings/upload",DEVICE_TYPE="remote"
+autostart=true
+autorestart=true
+stdout_logfile=$W/logs/whisperlive/whisperlive.log
+stderr_logfile=$W/logs/whisperlive/whisperlive.err.log
+startsecs=6
+
 [program:hivemind]
 command=/usr/local/bin/hivemind
 environment=DB_HOST="127.0.0.1",DB_PORT="5432",DB_NAME="postgres",DB_USER="supabase_admin",DB_PASSWORD="postgres",DB_SCHEMA="hivemind",JWT_SECRET="$HIVEMIND_JWT_SECRET",JWT_TTL_SECONDS="2592000",ENCRYPTION_SECRET="$HIVEMIND_ENCRYPTION_SECRET",VEXA_API_URL="http://127.0.0.1:8056",VEXA_ADMIN_API_URL="http://127.0.0.1:8057",VEXA_ADMIN_TOKEN="token",EMBEDDING_API_URL="http://127.0.0.1:11434",EMBEDDING_MODEL="nomic-embed-text",QDRANT_URL="http://127.0.0.1:6334",QDRANT_API_KEY="qdrant-dev-key",HOST="0.0.0.0",PORT="9100"
@@ -291,7 +306,7 @@ startsecs=3
 [program:vexa-bot-manager]
 command=$W/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
 directory=$W/repo/companion-voice/services/bot-manager
-environment=REDIS_URL="redis://127.0.0.1:6379/0",TTS_SERVICE_URL="http://127.0.0.1:8002",DB_HOST="127.0.0.1",DB_PORT="5432",DB_NAME="postgres",DB_USER="supabase_admin",DB_PASSWORD="postgres",DB_SCHEMA="vexa",DB_SSL_MODE="disable",ADMIN_TOKEN="token",ORCHESTRATOR="process",BOT_SCRIPT_PATH="$W/repo/companion-voice/services/vexa-bot/core/dist/docker.js",BOT_WORKING_DIR="$W/repo/companion-voice/services/vexa-bot/core",DISPLAY=":99",WHISPER_LIVE_URL="ws://127.0.0.1:9090/ws",STORAGE_BACKEND="minio",MINIO_ENDPOINT="127.0.0.1:9000",MINIO_ACCESS_KEY="vexa-access-key",MINIO_SECRET_KEY="vexa-secret-key",MINIO_BUCKET="vexa-recordings",BOT_CALLBACK_BASE_URL="http://127.0.0.1:8080",BOT_CALLBACK_URL="http://127.0.0.1:8080/bots/internal/callback/exited",BOT_RECORDING_UPLOAD_URL="http://127.0.0.1:8080/internal/recordings/upload",PROCESS_LOGS_DIR="$W/logs/vexa-bots"
+environment=REDIS_URL="redis://127.0.0.1:6379/0",TTS_SERVICE_URL="http://127.0.0.1:8002",DB_HOST="127.0.0.1",DB_PORT="5432",DB_NAME="postgres",DB_USER="supabase_admin",DB_PASSWORD="postgres",DB_SCHEMA="vexa",DB_SSL_MODE="disable",ADMIN_TOKEN="token",ORCHESTRATOR="process",BOT_SCRIPT_PATH="$W/repo/companion-voice/services/vexa-bot/core/dist/docker.js",BOT_WORKING_DIR="$W/repo/companion-voice/services/vexa-bot/core",DISPLAY=":99",WHISPER_LIVE_URL="ws://127.0.0.1:9090/ws",TRANSCRIPTION_COLLECTOR_URL="http://127.0.0.1:8124",STORAGE_BACKEND="minio",MINIO_ENDPOINT="127.0.0.1:9000",MINIO_ACCESS_KEY="vexa-access-key",MINIO_SECRET_KEY="vexa-secret-key",MINIO_BUCKET="vexa-recordings",BOT_CALLBACK_BASE_URL="http://127.0.0.1:8080",BOT_CALLBACK_URL="http://127.0.0.1:8080/bots/internal/callback/exited",BOT_RECORDING_UPLOAD_URL="http://127.0.0.1:8080/internal/recordings/upload",PROCESS_LOGS_DIR="$W/logs/vexa-bots"
 autostart=true
 autorestart=true
 stdout_logfile=$W/logs/vexa/bot-manager.log
