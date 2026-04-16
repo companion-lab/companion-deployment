@@ -20,6 +20,12 @@ if ! command -v cargo &>/dev/null; then
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
 
+echo "=== 2b. Install Node.js + Xvfb (if needed) ==="
+if ! command -v node &>/dev/null; then
+  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+  apt-get install -y --no-install-recommends nodejs xvfb 2>&1 | tail -3
+fi
+
 echo "=== 3. Install Qdrant (if needed) ==="
 if ! command -v qdrant &>/dev/null; then
   curl -fsSL https://github.com/qdrant/qdrant/releases/download/v1.12.4/qdrant-x86_64-unknown-linux-gnu.tar.gz \
@@ -58,6 +64,26 @@ if [ ! -f $W/repo/companion-hivemind/target/release/companion-hivemind ]; then
   cargo build --release 2>&1 | tail -3
 fi
 cp $W/repo/companion-hivemind/target/release/companion-hivemind /usr/local/bin/hivemind
+
+echo "=== 6b. Build vexa-bot (if needed) ==="
+if [ ! -f $W/repo/companion-voice/services/vexa-bot/core/dist/docker.js ]; then
+  cd $W/repo/companion-voice/services/vexa-bot
+  npm install 2>&1 | tail -3
+  npm run build 2>&1 | tail -3
+fi
+
+# Ensure Playwright Chromium is installed for browser automation
+if [ ! -d "$HOME/.cache/ms-playwright/chromium-1208" ] && [ ! -d "$HOME/.cache/ms-playwright/chromium_headless_shell-1208" ]; then
+  cd $W/repo/companion-voice/services/vexa-bot
+  npx playwright install chromium 2>&1 | tail -3
+fi
+
+# Start virtual display for browser automation (idempotent)
+if ! pgrep -f "Xvfb :99" >/dev/null; then
+  rm -f /tmp/.X99-lock || true
+  Xvfb :99 -screen 0 1280x720x24 -ac >/tmp/xvfb.log 2>&1 &
+  sleep 1
+fi
 
 echo "=== 7. Set up Python venv ==="
 if [ ! -f $W/venv/bin/uvicorn ]; then
@@ -265,7 +291,7 @@ startsecs=3
 [program:vexa-bot-manager]
 command=$W/venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8080
 directory=$W/repo/companion-voice/services/bot-manager
-environment=REDIS_URL="redis://127.0.0.1:6379/0",TTS_SERVICE_URL="http://127.0.0.1:8002",DB_HOST="127.0.0.1",DB_PORT="5432",DB_NAME="postgres",DB_USER="supabase_admin",DB_PASSWORD="postgres",DB_SCHEMA="vexa",DB_SSL_MODE="disable",ADMIN_TOKEN="token",ORCHESTRATOR="process",BOT_SCRIPT_PATH="$W/repo/companion-voice/services/vexa-bot/core/dist/docker.js",BOT_WORKING_DIR="$W/repo/companion-voice/services/vexa-bot/core",WHISPER_LIVE_URL="ws://127.0.0.1:9090/ws",STORAGE_BACKEND="minio",MINIO_ENDPOINT="127.0.0.1:9000",MINIO_ACCESS_KEY="vexa-access-key",MINIO_SECRET_KEY="vexa-secret-key",MINIO_BUCKET="vexa-recordings",BOT_CALLBACK_BASE_URL="http://127.0.0.1:8080",BOT_CALLBACK_URL="http://127.0.0.1:8080/bots/internal/callback/exited",BOT_RECORDING_UPLOAD_URL="http://127.0.0.1:8080/internal/recordings/upload",PROCESS_LOGS_DIR="$W/logs/vexa-bots"
+environment=REDIS_URL="redis://127.0.0.1:6379/0",TTS_SERVICE_URL="http://127.0.0.1:8002",DB_HOST="127.0.0.1",DB_PORT="5432",DB_NAME="postgres",DB_USER="supabase_admin",DB_PASSWORD="postgres",DB_SCHEMA="vexa",DB_SSL_MODE="disable",ADMIN_TOKEN="token",ORCHESTRATOR="process",BOT_SCRIPT_PATH="$W/repo/companion-voice/services/vexa-bot/core/dist/docker.js",BOT_WORKING_DIR="$W/repo/companion-voice/services/vexa-bot/core",DISPLAY=":99",WHISPER_LIVE_URL="ws://127.0.0.1:9090/ws",STORAGE_BACKEND="minio",MINIO_ENDPOINT="127.0.0.1:9000",MINIO_ACCESS_KEY="vexa-access-key",MINIO_SECRET_KEY="vexa-secret-key",MINIO_BUCKET="vexa-recordings",BOT_CALLBACK_BASE_URL="http://127.0.0.1:8080",BOT_CALLBACK_URL="http://127.0.0.1:8080/bots/internal/callback/exited",BOT_RECORDING_UPLOAD_URL="http://127.0.0.1:8080/internal/recordings/upload",PROCESS_LOGS_DIR="$W/logs/vexa-bots"
 autostart=true
 autorestart=true
 stdout_logfile=$W/logs/vexa/bot-manager.log
