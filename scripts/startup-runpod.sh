@@ -66,10 +66,23 @@ fi
 cp $W/repo/companion-hivemind/target/release/companion-hivemind /usr/local/bin/hivemind
 
 echo "=== 6b. Build vexa-bot (if needed) ==="
-if [ ! -f $W/repo/companion-voice/services/vexa-bot/core/dist/docker.js ]; then
-  cd $W/repo/companion-voice/services/vexa-bot
+cd $W/repo/companion-voice/services/vexa-bot
+VEXA_BOT_BUILD_STAMP=$W/config/.vexa-bot-build-commit
+CURRENT_VEXA_BOT_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo unknown)
+SHOULD_BUILD_VEXA_BOT=false
+
+if [ ! -f core/dist/docker.js ] || [ ! -f core/dist/browser-utils.global.js ]; then
+  SHOULD_BUILD_VEXA_BOT=true
+elif [ ! -f "$VEXA_BOT_BUILD_STAMP" ] || [ "$(cat "$VEXA_BOT_BUILD_STAMP" 2>/dev/null)" != "$CURRENT_VEXA_BOT_COMMIT" ]; then
+  SHOULD_BUILD_VEXA_BOT=true
+fi
+
+if [ "$SHOULD_BUILD_VEXA_BOT" = true ]; then
   npm install 2>&1 | tail -3
   npm run build 2>&1 | tail -3
+  echo "$CURRENT_VEXA_BOT_COMMIT" > "$VEXA_BOT_BUILD_STAMP"
+else
+  echo "vexa-bot build already up-to-date for commit $CURRENT_VEXA_BOT_COMMIT"
 fi
 
 # Ensure Playwright Chromium is installed for browser automation
