@@ -63,7 +63,10 @@ if [ ! -f $W/repo/companion-hivemind/target/release/companion-hivemind ]; then
   cd $W/repo/companion-hivemind
   cargo build --release 2>&1 | tail -3
 fi
-cp $W/repo/companion-hivemind/target/release/companion-hivemind /usr/local/bin/hivemind
+TMP_HIVEMIND_BIN=/usr/local/bin/hivemind.new
+cp $W/repo/companion-hivemind/target/release/companion-hivemind "$TMP_HIVEMIND_BIN"
+chmod +x "$TMP_HIVEMIND_BIN"
+mv -f "$TMP_HIVEMIND_BIN" /usr/local/bin/hivemind
 
 echo "=== 6b. Build vexa-bot (if needed) ==="
 cd $W/repo/companion-voice/services/vexa-bot
